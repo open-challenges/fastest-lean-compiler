@@ -20,11 +20,16 @@ Steps:
    the build can write only its own source tree. It has the network, because Lean's build fetches
    the pinned CaDiCaL, mimalloc and leantar; nothing else that runs an entry's code does.
 3. Build the exporter (harness/) with each toolchain.
-4. Rounds. Each round salts a fresh copy of the workload (scripts/salt.py: one new theorem in every
-   file), then builds it with each toolchain from clean, alternating which goes first. Only `lake
-   build` is timed, by this script, outside a container with no network. Then each toolchain exports the theorems
-   it built (harness/ExportTheorems.lean), and the two exports must be identical, byte for byte.
-5. The score is the speedup: the median over rounds of stock's build time divided by the entry's.
+4. Rounds, an even number of them. Each round salts two fresh copies of the workload the same way
+   (scripts/salt.py: one new theorem in every file), then builds them from clean, one with each
+   toolchain, each toolchain going first in half of the rounds, after one untimed warm-up build with
+   each toolchain. Before each build pending disk writes
+   are flushed and both toolchains are read into memory. Only `lake build` is timed, by this script,
+   outside a container with no network. Then each toolchain exports the theorems it built
+   (harness/ExportTheorems.lean), and the two exports must be identical, byte for byte.
+5. The score is the speedup: the geometric mean over rounds of stock's build time divided by the
+   entry's. On one machine the second build of a round ran up to 4% faster than the first, which is
+   why the order is balanced.
 
 The verdict goes to <work>/verdict.json. Exit code 0 means the entry built the same theorems.
 """
@@ -33,6 +38,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -227,19 +233,42 @@ def first_difference(a: str, b: str) -> dict:
     return {"line": None, "note": "one export is a prefix of the other"}
 
 
-def one_build(work: str, project: dict, pristine: str, label: str, seed: int, toolchain: str, exporter: str, mode: str) -> dict:
+def prepare(work: str, pristine: str, label: str, seed: int) -> tuple[str, int]:
+    """A fresh salted copy of the workload for one build."""
     run_dir = os.path.join(work, f"run-{label}")
     shutil.rmtree(run_dir, ignore_errors=True)
     shutil.copytree(pristine, run_dir, symlinks=True)
-    salted = salt.salt_tree(run_dir, seed)
+    return run_dir, salt.salt_tree(run_dir, seed)
+
+
+def settle(toolchains: list[str]) -> None:
+    """Before a timed build: write out pending disk writes, and read every toolchain into the page
+    cache, so that neither build pays for the other's I/O or for a cold toolchain."""
+    for tc in toolchains:
+        for dirpath, _, filenames in os.walk(tc):
+            for f in filenames:
+                try:
+                    with open(os.path.join(dirpath, f), "rb") as fh:
+                        while fh.read(1 << 22):
+                            pass
+                except OSError:
+                    pass
+    subprocess.run(["sync"])
+    time.sleep(3)
+
+
+def timed_build(run_dir: str, project: dict, label: str, toolchain: str, mode: str) -> float:
     targets = " ".join(project["targets"])
     try:
-        secs = sandbox(f"lake build {targets} > build.log 2>&1", cwd=run_dir, rw=[run_dir], ro=[toolchain],
+        return sandbox(f"lake build {targets} > build.log 2>&1", cwd=run_dir, rw=[run_dir], ro=[toolchain],
                        toolchain=toolchain, timeout=BUILD_TIMEOUT, mode=mode)
     except subprocess.CalledProcessError:
         raise BuildFailed(label, "build", tail(os.path.join(run_dir, "build.log")))
     except subprocess.TimeoutExpired:
         raise BuildFailed(label, "build", f"lake build took longer than {BUILD_TIMEOUT // 60} minutes")
+
+
+def export(work: str, run_dir: str, project: dict, label: str, toolchain: str, exporter: str, mode: str) -> dict:
     out = os.path.join(work, f"theorems-{label}.ndjson")
     roots, prefixes = " ".join(project["export_roots"]), " ".join(project["prefixes"])
     try:
@@ -249,9 +278,10 @@ def one_build(work: str, project: dict, pristine: str, label: str, seed: int, to
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         raise BuildFailed(label, "export", tail(os.path.join(run_dir, "export.log")))
     shutil.move(os.path.join(run_dir, "theorems.ndjson"), out)
-    m = re.search(r"\[export\] (\d+) theorems", open(os.path.join(run_dir, "export.log"), errors="replace").read())
-    return {"seconds": round(secs, 1), "salted_files": salted, "export": out, "export_bytes": os.path.getsize(out),
-            "sha256": sha256(out), "theorems": int(m.group(1)) if m else None}
+    with open(os.path.join(run_dir, "export.log"), errors="replace") as fh:
+        m = re.search(r"\[export\] (\d+) theorems", fh.read())
+    return {"export": out, "export_bytes": os.path.getsize(out), "sha256": sha256(out),
+            "theorems": int(m.group(1)) if m else None}
 
 
 class BuildFailed(Exception):
@@ -262,16 +292,36 @@ class BuildFailed(Exception):
 
 def rounds(work: str, project: dict, pristine: str, toolchains: dict[str, str], exporters: dict[str, str],
            n: int, mode: str) -> list[dict]:
+    """n rounds (made even), each toolchain first in half of them. In a round both copies are salted
+    the same way and prepared before either build is timed; the exports come after both builds."""
+    n += n % 2
+    # one untimed build per toolchain first: the first build of a run is the slowest, and it also
+    # shows early that both toolchains can build the workload at all
+    for label in dict.fromkeys(sorted(toolchains, key=lambda l: toolchains[l])):
+        if label == "entry" and toolchains["entry"] == toolchains["stock"]:
+            continue
+        d, _ = prepare(work, pristine, f"warmup-{label}", secrets.randbits(64))
+        log(f"warm-up build: {label}")
+        timed_build(d, project, label, toolchains[label], mode)
+        shutil.rmtree(d, ignore_errors=True)
     out = []
     for r in range(n):
         seed = secrets.randbits(64)
         order = ["stock", "entry"] if r % 2 == 0 else ["entry", "stock"]
-        res = {}
+        res: dict[str, dict] = {}
+        dirs = {}
         for label in order:
+            dirs[label], salted = prepare(work, pristine, label, seed)
+            res[label] = {"salted_files": salted}
+        for label in order:
+            settle(sorted(set(toolchains.values())))
             log(f"round {r + 1}/{n}: {label}")
-            res[label] = one_build(work, project, pristine, label, seed, toolchains[label], exporters[label], mode)
-            log(f"round {r + 1}: {label} built in {res[label]['seconds']} s, {res[label]['theorems']} theorems, "
-                f"export {res[label]['export_bytes']:,} bytes {res[label]['sha256'][:16]}")
+            res[label]["seconds"] = round(timed_build(dirs[label], project, label, toolchains[label], mode), 1)
+            log(f"round {r + 1}: {label} built in {res[label]['seconds']} s")
+        for label in order:
+            res[label].update(export(work, dirs[label], project, label, toolchains[label], exporters[label], mode))
+            log(f"round {r + 1}: {label} exported {res[label]['theorems']} theorems, "
+                f"{res[label]['export_bytes']:,} bytes {res[label]['sha256'][:16]}")
         same = res["stock"]["sha256"] == res["entry"]["sha256"]
         row = {"round": r + 1, "seed": f"{seed:016x}", "first": order[0], "same_theorems": same,
                "stock": {k: v for k, v in res["stock"].items() if k != "export"},
@@ -287,6 +337,12 @@ def rounds(work: str, project: dict, pristine: str, toolchains: dict[str, str], 
     return out
 
 
+def score(rows: list[dict]) -> float:
+    """The geometric mean of the rounds' speedups. Each toolchain goes first in half of the rounds,
+    so an advantage of going first or second cancels out."""
+    return math.exp(statistics.fmean(math.log(r["speedup"]) for r in rows))
+
+
 # ---------------------------------------------------------------------------------------------- main
 
 def main(argv: list[str]) -> int:
@@ -297,7 +353,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--stock-toolchain", help="stock Lean's stage1 folder, built the same way; built here if absent")
     ap.add_argument("--stock-dir", help="where to keep stock Lean's source and build between runs")
     ap.add_argument("--sandbox", choices=["docker", "none"], default="none")
-    ap.add_argument("--rounds", type=int, default=int(os.environ.get("FLC_ROUNDS", 3)))
+    ap.add_argument("--rounds", type=int, default=int(os.environ.get("FLC_ROUNDS", 4)), help="timed rounds, made even")
     ap.add_argument("--work", help="work folder (default: a new temporary one)")
     args = ap.parse_args(argv)
 
@@ -405,8 +461,7 @@ def main(argv: list[str]) -> int:
     verdict["rounds"] = rows
     if not all(r["same_theorems"] for r in rows):
         return finish(False, stage="compare", error="the entry's theorems differ from stock Lean's", difference=rows[-1].get("difference"))
-    speedup = statistics.median(r["speedup"] for r in rows)
-    return finish(True, stage="done", speedup=round(speedup, 3),
+    return finish(True, stage="done", speedup=round(score(rows), 3),
                   stock_seconds=round(statistics.median(r["stock"]["seconds"] for r in rows), 1),
                   entry_seconds=round(statistics.median(r["entry"]["seconds"] for r in rows), 1),
                   theorems=rows[0]["entry"]["theorems"], export_bytes=rows[0]["entry"]["export_bytes"])

@@ -26,7 +26,7 @@ class DecideTest(unittest.TestCase):
         self.assertIn("needs-review", d["labels"])
 
     def test_noise_is_not_a_record(self):
-        d, _ = report.decide(verdict(1.01), self.ENTRY, [])
+        d, _ = report.decide(verdict(1.02), self.ENTRY, [])
         self.assertEqual((d["merge"], d["record"]), (False, False))
 
     def test_different_theorems_fail(self):

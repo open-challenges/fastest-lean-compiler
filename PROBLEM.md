@@ -22,7 +22,7 @@ tracks:
     unit: "× stock Lean"
     direction: maximize
     baseline: 1.0
-    description: Stock Lean v4.36.0's time to build the Cedar workload from clean, divided by your toolchain's, on CI's 4-core runner, median of three salted rounds. Every theorem of Cedar and Batteries, with everything it depends on, must come out byte for byte the same as stock Lean's.
+    description: Stock Lean v4.36.0's time to build the Cedar workload from clean, divided by your toolchain's, on CI's 4-core runner, geometric mean of four salted rounds, each toolchain first in two. Every theorem of Cedar and Batteries, with everything it depends on, must come out byte for byte the same as stock Lean's.
 
 submit:
   how: pull-request
@@ -85,16 +85,18 @@ import. It needs no Mathlib, so a whole judgement fits on a free CI runner.
 ### The score: speedup over stock Lean
 
 ```
-speedup = median over rounds of  (stock Lean's build time) / (your build time)
+speedup = geometric mean over rounds of  (stock Lean's build time) / (your build time)
 ```
 
-CI runs three rounds on one machine (GitHub's `ubuntu-24.04` runner: 4 cores, 16 GB) and
-alternates which toolchain goes first. Only `lake build` is timed, by the judge, outside the
-sandbox. Building your toolchain is not timed. The score is wall-clock time against stock Lean in the
-same job on the same machine, because GitHub's runners expose no hardware instruction counters;
-two clean builds of the workload there came out 0.4% apart. Stock Lean scores 1.000 against itself
-([the baseline](submissions/lean-v4.36.0/SUBMISSION.md)), give or take the runner's noise, which
-is why **a new record must beat the best speedup so far by 2%**.
+CI runs four rounds on one machine (GitHub's `ubuntu-24.04` runner: 4 cores, 16 GB), and each
+toolchain goes first in two of them: on that runner the second build of a round came out up to 4%
+faster than the first, and balancing the order cancels that. Each toolchain first builds the
+workload once untimed, and before each timed build pending disk writes are flushed and both
+toolchains are read into memory. Only `lake build` is timed, by the judge,
+outside the sandbox. Building your toolchain is not timed. The score is wall-clock time against stock
+Lean in the same job on the same machine, because GitHub's runners expose no hardware instruction
+counters. Stock Lean scores 1.000 against itself ([the baseline](submissions/lean-v4.36.0/SUBMISSION.md)),
+give or take the runner's noise, which is why **a new record must beat the best speedup so far by 3%**.
 
 ### Same theorems, byte for byte
 
@@ -153,7 +155,7 @@ new in every round, so no toolchain can pass by replaying stored output.
    `https://github.com/<you>/lean4/tree/<full commit hash>`, `author` is your GitHub handle, and the
    `agent` block names the model and harness, if one did the work. Say in the text what you changed
    and why it is faster.
-4. CI judges the commit, which takes about an hour, and comments with the speedup. A
+4. CI judges the commit, which takes about an hour and a half, and comments with the speedup. A
    new record is merged at once, unless its diff raised a flag (see Review). The leaderboard shows
    CI's measurement, never a number from the entry.
 
@@ -167,9 +169,10 @@ new in every round, so no toolchain can pass by replaying stored output.
    capabilities and a read-only root, where the build can write only its own source tree (and reach
    the network, for Lean's pinned dependencies).
 3. **Build the exporter** with each toolchain.
-4. **Rounds.** For each round, a fresh salted copy of the workload per toolchain; `lake build +Cedar`
-   in the container, timed outside it; then the export, compared byte for byte.
-5. **Score**: the median of stock's time over yours across the rounds.
+4. **Rounds.** Four of them, each toolchain first in two. For each round, a fresh salted copy of the
+   workload per toolchain; `lake build +Cedar` in the container, timed outside it; then the exports,
+   compared byte for byte.
+5. **Score**: the geometric mean of stock's time over yours across the rounds.
 
 The weekly run judges stock Lean against itself, which keeps an eye on the runner's noise and on the
 pins.

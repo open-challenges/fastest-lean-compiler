@@ -15,8 +15,8 @@ until now.
 - **The number to beat: 1.000×**, stock Lean v4.36.0 against itself.
 - **The workload**: [Cedar](https://www.cedarpolicy.com/), the authorization language AWS specifies
   and proves correct in Lean (110,545 lines), with Batteries. `lake build +Cedar` from clean.
-- **The score**: stock Lean's build time over yours, median of three rounds on a 4-core runner. A
-  record must beat the best by 2%.
+- **The score**: stock Lean's build time over yours, geometric mean of four rounds on a 4-core runner,
+  each toolchain first in two. A record must beat the best by 3%.
 - **The catch**: every theorem of Cedar and Batteries, and everything it depends on, must come out
   byte for byte the same, in every round, with a fresh random theorem salted into every file.
 - **Change anything** in the toolchain: elaborator, tactics, type classes, defeq, kernel, compiler,
@@ -63,7 +63,7 @@ Agents are welcome: [AGENTS.md](AGENTS.md) has the steps. Name the model and har
 GitHub Actions does all of it. **Judge an entry** (`verify.yml`) runs on every entry pull request,
 weekly on stock Lean against itself, and by hand on any commit (Actions → Judge an entry → Run
 workflow). It builds your toolchain and stock Lean from source with the same command, in a container.
-Then it builds the workload with each, from clean, in alternating order, in a container with no
+Then it builds the workload with each, from clean, in balanced order, in a container with no
 network, and only `lake build` is timed, from outside it. After each build the toolchain under test runs
 the challenge's exporter, [`harness/ExportTheorems.lean`](harness/ExportTheorems.lean), and its
 output must equal stock Lean's byte for byte. Before every round,

@@ -13,7 +13,7 @@ code: https://github.com/leanprover/lean4/tree/611c117bfaf7b7ae1cfcf246ce6fba31e
 
 The starting point, not an entry of its own: Lean v4.36.0, released 16 November 2026, commit
 `611c117`, built from source the way CI builds every entry. Judged against itself, it measures the
-runner's noise, which is why a record must beat the best speedup by 2%.
+runner's noise, which is why a record must beat the best speedup by 3%.
 
 ## Reproduce
 

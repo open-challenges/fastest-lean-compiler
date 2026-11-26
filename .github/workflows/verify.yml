@@ -27,8 +27,8 @@ on:
         description: https://github.com/OWNER/REPO/tree/<40-hex commit>, or stock
         default: stock
       rounds:
-        description: timed rounds
-        default: "3"
+        description: timed rounds (made even)
+        default: "4"
 
 permissions:
   contents: read
@@ -85,14 +85,17 @@ jobs:
           key: stock-lean-${{ hashFiles('bench/workload.json', 'harness/sandbox.Dockerfile') }}
 
       - name: Judge
+        id: judge
         if: env.CODE != ''
         env:
-          FLC_ROUNDS: ${{ inputs.rounds || '3' }}
-        run: python3 scripts/verify.py --code "$CODE" --sandbox docker --stock-dir "$RUNNER_TEMP/stock" --work "$RUNNER_TEMP/work" || true
+          FLC_ROUNDS: ${{ inputs.rounds || '4' }}
+        run: |
+          python3 scripts/verify.py --code "$CODE" --sandbox docker --stock-dir "$RUNNER_TEMP/stock" --work "$RUNNER_TEMP/work" || true
+          [ -f "$RUNNER_TEMP/stock/build/release/stage1/bin/lean" ] && echo "stock_built=true" >> "$GITHUB_OUTPUT" || true
 
       # only trusted runs fill the cache: stock Lean is built from the pinned tag, before any entry runs
       - name: Keep stock Lean for the next run
-        if: env.CODE != '' && github.event_name != 'pull_request_target' && steps.stock.outputs.cache-hit != 'true' && hashFiles(format('{0}/stock/build/release/stage1/bin/lean', runner.temp)) != ''
+        if: env.CODE != '' && github.event_name != 'pull_request_target' && steps.stock.outputs.cache-hit != 'true' && steps.judge.outputs.stock_built == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/stock

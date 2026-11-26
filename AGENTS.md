@@ -24,7 +24,7 @@ python3 scripts/verify.py --entry-toolchain ../lean4/build/release/stage1 \
 It salts a copy of the workload, builds it with each toolchain, times `lake build`, exports the
 theorems with each, and compares the exports. `"ok": true` in the verdict means the theorems match,
 and `"speedup"` is your score on that machine. CI's number, from a 4-core runner, is what counts.
-Use `--rounds 3` before submitting, and keep the same `--work` folder between runs so the workload
+Use `--rounds 4` before submitting, and keep the same `--work` folder between runs so the workload
 is fetched once.
 
 To find where time goes, build the workload by hand with your toolchain on `PATH` and profile:

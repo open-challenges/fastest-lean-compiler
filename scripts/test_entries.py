@@ -42,12 +42,12 @@ class EntriesTest(unittest.TestCase):
         json.dump({"ok": True, "speedup": 1.3, "commit": SHA}, open(os.path.join(d, "verdict.json"), "w"))
         rows = entries.standings(entries.load(root))
         self.assertEqual([r.speedup for r in rows], [1.3])
-        self.assertTrue(entries.is_record(1.33, rows))
-        self.assertFalse(entries.is_record(1.32, rows))
+        self.assertTrue(entries.is_record(1.34, rows))
+        self.assertFalse(entries.is_record(1.33, rows))
 
     def test_first_record_must_beat_stock_by_the_margin(self):
-        self.assertFalse(entries.is_record(1.01, []))
-        self.assertTrue(entries.is_record(1.02, []))
+        self.assertFalse(entries.is_record(1.02, []))
+        self.assertTrue(entries.is_record(1.03, []))
 
 
 if __name__ == "__main__":

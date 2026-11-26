@@ -14,7 +14,7 @@ HANDLE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
 # a commit of a public GitHub repository holding a Lean 4 source tree at its root
 CODE_URL = re.compile(r"^https://github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})/(?:tree|commit)/([0-9a-f]{40})/?$")
 # a new record must beat the best verified speedup by this factor, which is above the runner's noise
-RECORD_MARGIN = 1.02
+RECORD_MARGIN = 1.03
 
 
 class EntryError(Exception):
@@ -99,7 +99,8 @@ def load(root: str) -> list[Entry]:
 def standings(entries: list[Entry]) -> list[Entry]:
     """Verified entries, fastest first; ties go to the earlier entry. The baseline is among them."""
     rows = [e for e in entries if e.speedup is not None]
-    return sorted(rows, key=lambda e: (-e.speedup, e.date or "9999"))
+    # the baseline is stock against itself: 1 by definition, whatever noise its self-check measured
+    return sorted(rows, key=lambda e: (-(1.0 if e.baseline else e.speedup), e.date or "9999"))
 
 
 def best(entries: list[Entry]) -> float:

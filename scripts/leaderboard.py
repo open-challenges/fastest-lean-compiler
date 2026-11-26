@@ -33,7 +33,9 @@ def render(root: str) -> str:
         agent = " via ".join(x for x in (e.agent.get("model"), e.agent.get("harness")) if x) or "—"
         title = f"[{e.title}](submissions/{e.folder}/SUBMISSION.md)" + (" (baseline)" if e.baseline else "")
         times = f"{v.get('stock_seconds', 0) / 60:.1f} → {v.get('entry_seconds', 0) / 60:.1f} min"
-        out.append(f"| {'—' if e.baseline else rank} | **{e.speedup:.3f}×** | {times} | {title} · [code]({e.code}) "
+        # stock against itself is 1 by definition; what it measured is the runner's noise
+        score = f"1.000× (self-check {e.speedup:.3f}×)" if e.baseline else f"**{e.speedup:.3f}×**"
+        out.append(f"| {'—' if e.baseline else rank} | {score} | {times} | {title} · [code]({e.code}) "
                    f"| {who} | {agent} | {e.date or '—'} |")
     return "\n".join(out) + "\n"
 
