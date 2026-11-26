@@ -16,12 +16,13 @@ Steps:
 1. Fetch the entry's commit and stock Lean's (bench/workload.json pins it), and list what the entry
    changes (the diff is shown on the pull request, and some kinds of change wait for a maintainer).
 2. Build both toolchains from source the same way: `cmake --preset release` with clang, then make.
-   With --sandbox docker this runs in a container with no network, no capabilities and a read-only
-   root, where the build can write only its own source tree.
+   With --sandbox docker this runs in a container with no capabilities and a read-only root, where
+   the build can write only its own source tree. It has the network, because Lean's build fetches
+   the pinned CaDiCaL, mimalloc and leantar; nothing else that runs an entry's code does.
 3. Build the exporter (harness/) with each toolchain.
 4. Rounds. Each round salts a fresh copy of the workload (scripts/salt.py: one new theorem in every
    file), then builds it with each toolchain from clean, alternating which goes first. Only `lake
-   build` is timed, by this script, outside the container. Then each toolchain exports the theorems
+   build` is timed, by this script, outside a container with no network. Then each toolchain exports the theorems
    it built (harness/ExportTheorems.lean), and the two exports must be identical, byte for byte.
 5. The score is the speedup: the median over rounds of stock's build time divided by the entry's.
 
@@ -85,6 +86,22 @@ def fetch(repo_url: str, sha: str, dest: str) -> None:
 
 # ---------------------------------------------------------------------------------------------- diff
 
+BUILD_FILE = re.compile(r"(^|/)(CMakeLists\.txt|[^/]*\.cmake|[^/]*\.mk|Makefile|lakefile\.(lean|toml)|CMakePresets\.json)$|^script/")
+DOWNLOAD = re.compile(r"GIT_REPOSITORY|GIT_TAG|FetchContent_Declare|ExternalProject_Add|file\s*\(\s*DOWNLOAD|https?://|curl |wget ")
+
+
+def added_lines(patch: str) -> dict[str, list[str]]:
+    """Lines a unified diff adds, by file."""
+    out: dict[str, list[str]] = {}
+    path = None
+    for line in patch.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif path and line.startswith("+"):
+            out.setdefault(path, []).append(line[1:])
+    return out
+
+
 def diff_summary(src: str, base: str) -> dict:
     """What the entry changes relative to stock Lean, and the flags that make it wait for a maintainer."""
     git = ["git", "-C", src]
@@ -99,14 +116,15 @@ def diff_summary(src: str, base: str) -> dict:
         added, deleted = added + int(a), deleted + int(d)
         files.append({"path": path, "added": int(a), "deleted": int(d)})
     patch = subprocess.run(git + ["diff", "--unified=0", base, "HEAD"], capture_output=True, text=True, errors="replace").stdout
-    mentions = sorted({w.lower() for w in re.findall(r"(?i)cedar|flcsalt|flc_salt|batteries", "\n".join(
-        l for l in patch.splitlines() if l.startswith("+") and not l.startswith("+++")))})
+    adds = added_lines(patch)
+    mentions = sorted({w.lower() for lines in adds.values() for w in re.findall(r"(?i)cedar|flcsalt|flc_salt|batteries", "\n".join(lines))})
+    downloads = sorted(p for p, lines in adds.items() if BUILD_FILE.search(p) and any(DOWNLOAD.search(l) for l in lines))
     return {"files": len(files), "added": added, "deleted": deleted, "binary": binary,
             "largest": sorted(files, key=lambda f: -(f.get("added", 0) + f.get("deleted", 0)))[:15],
-            "flags": flags(files, added + deleted, binary, mentions)}
+            "flags": flags(files, added + deleted, binary, mentions, downloads)}
 
 
-def flags(files: list[dict], changed: int, binary: list[str], mentions: list[str]) -> list[str]:
+def flags(files: list[dict], changed: int, binary: list[str], mentions: list[str], downloads: list[str] = ()) -> list[str]:
     out = []
     if binary:
         out.append(f"changes {len(binary)} binary file(s): {', '.join(binary[:5])}")
@@ -118,13 +136,17 @@ def flags(files: list[dict], changed: int, binary: list[str], mentions: list[str
         out.append("updates stage0, the bootstrap compiler")
     if mentions:
         out.append(f"the added lines mention the workload ({', '.join(mentions)})")
+    if downloads:
+        out.append(f"the build files fetch something new ({', '.join(downloads[:5])})")
     return out
 
 
 # ------------------------------------------------------------------------------------------- sandbox
 
-def sandbox(cmd: str, *, cwd: str, rw: list[str], ro: list[str], toolchain: str | None, timeout: int, mode: str) -> float:
-    """Run `bash -c cmd` in cwd, in the container or directly; return the wall time, measured here."""
+def sandbox(cmd: str, *, cwd: str, rw: list[str], ro: list[str], toolchain: str | None, timeout: int, mode: str,
+            network: bool = False) -> float:
+    """Run `bash -c cmd` in cwd, in the container or directly; return the wall time, measured here.
+    Only a toolchain build gets the network: Lean's CMake fetches CaDiCaL, mimalloc and leantar."""
     path = (f"{toolchain}/bin:" if toolchain else "") + "/usr/bin:/bin"
     if mode == "none":
         env = dict(os.environ, PATH=(f"{toolchain}/bin:" if toolchain else "") + os.environ["PATH"])
@@ -132,7 +154,7 @@ def sandbox(cmd: str, *, cwd: str, rw: list[str], ro: list[str], toolchain: str 
         run(["bash", "-c", cmd], cwd=cwd, env=env, timeout=timeout)
         return time.monotonic() - start
     name = f"flc-{os.getpid()}-{secrets.token_hex(3)}"
-    docker = ["docker", "run", "--rm", "--name", name, "--network", "none", "--cap-drop", "ALL",
+    docker = ["docker", "run", "--rm", "--name", name, "--network", "bridge" if network else "none", "--cap-drop", "ALL",
               "--security-opt", "no-new-privileges", "--read-only", "--tmpfs", "/tmp:exec",
               "--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp", "-e", f"PATH={path}"]
     for p in rw:
@@ -168,7 +190,7 @@ def build_toolchain(src: str, mode: str) -> tuple[str, float]:
     """bench/workload.json's build command (cmake, then make) in src; returns (stage1 folder, minutes)."""
     stage1 = os.path.join(src, "build", "release", "stage1")
     secs = sandbox(f"({load_workload()['lean']['build']}) > make.log 2>&1",
-                   cwd=src, rw=[src], ro=[], toolchain=None, timeout=TOOLCHAIN_TIMEOUT, mode=mode)
+                   cwd=src, rw=[src], ro=[], toolchain=None, timeout=TOOLCHAIN_TIMEOUT, mode=mode, network=True)
     if not os.path.isfile(os.path.join(stage1, "bin", "lean")):
         raise RuntimeError("the build finished without stage1/bin/lean")
     return stage1, secs / 60

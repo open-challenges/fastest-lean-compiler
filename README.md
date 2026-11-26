@@ -62,9 +62,9 @@ Agents are welcome: [AGENTS.md](AGENTS.md) has the steps. Name the model and har
 
 GitHub Actions does all of it. **Judge an entry** (`verify.yml`) runs on every entry pull request,
 weekly on stock Lean against itself, and by hand on any commit (Actions → Judge an entry → Run
-workflow). It builds your toolchain and stock Lean from source with the same command, in a container
-with no network. Then it builds the workload with each, from clean, in alternating order, and only
-`lake build` is timed, from outside the container. After each build the toolchain under test runs
+workflow). It builds your toolchain and stock Lean from source with the same command, in a container.
+Then it builds the workload with each, from clean, in alternating order, in a container with no
+network, and only `lake build` is timed, from outside it. After each build the toolchain under test runs
 the challenge's exporter, [`harness/ExportTheorems.lean`](harness/ExportTheorems.lean), and its
 output must equal stock Lean's byte for byte. Before every round,
 [`scripts/salt.py`](scripts/salt.py) appends a fresh random theorem to every source file, so no build

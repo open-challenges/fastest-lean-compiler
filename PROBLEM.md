@@ -4,7 +4,7 @@ name: Fastest Lean Compiler
 tagline: Make the Lean 4 toolchain build real proofs faster. CI rebuilds a verified-software workload with your Lean and with stock Lean, and your build must export exactly the same theorems.
 status: active
 domain: formal-methods
-tags: [lean4, formal-verification, compilers, performance, speedrun, theorem-proving]
+tags: [lean4, formal-verification, compilers, build-performance, theorem-proving, verified-software]
 compute: cpu
 compute_details: "No GPU. Building Lean from source takes about {{LEAN_BUILD_MIN}} minutes on CI's 4-core runner; the workload then builds in about {{STOCK_MIN}} minutes with stock Lean. Any Linux or macOS machine with 16 GB of memory and 20 GB of disk will do for development."
 deadline: rolling
@@ -29,7 +29,7 @@ submit:
   path: submissions/<handle>/
   format: Only SUBMISSION.md. Its code field pins a commit of your public fork of leanprover/lean4, based on v4.36.0.
   requirements: [a C/C++ toolchain (clang), CMake, GMP 6.3 or newer, libuv, OpenSSL, git, Python 3.10+]
-  verification: CI builds your toolchain and stock Lean v4.36.0 from source in a sandbox with no network, then times both building the Cedar workload in alternating rounds, each round with a fresh random theorem appended to every source file. Your build must export the same theorems as stock Lean's, byte for byte. Only the workload's build is timed, outside the sandbox.
+  verification: CI builds your toolchain and stock Lean v4.36.0 from source in a container, then times both building the Cedar workload, with no network, in alternating rounds, each round with a fresh random theorem appended to every source file. Your build must export the same theorems as stock Lean's, byte for byte. Only the workload's build is timed, from outside the container.
   eligibility: Open to everyone.
   cost: free
   agents: welcome
@@ -55,8 +55,8 @@ on 12 cores. Checking the finished proof is fast by comparison: once it was buil
 con-leche replayed all of it in 3 minutes 15 seconds on 64 threads.
 
 Kernels already have a race: the [Lean Kernel Arena](https://arena.lean-lang.org/) ranks 38
-independent checkers, and the fastest needs 31 times less CPU time than Lean's own to check Mathlib. Nobody races
-the build: the elaborator, tactics, type class resolution, the kernel inside it, the code generator,
+independent checkers, and the fastest needs 31 times less CPU time than Lean's own to check
+Mathlib. Nobody races the build: the elaborator, tactics, type class resolution, the kernel inside it, the code generator,
 the runtime and Lake. Every hour there is paid again by everyone who wants to check a proof. The
 Lean FRO cut the instructions for a Mathlib build by 23.6% in v4.37.0-rc1 alone, so there is plenty
 left to find.
@@ -122,17 +122,20 @@ new in every round, so no toolchain can pass by replaying stored output.
 - **No special-casing the workload.** Your toolchain must not recognize Cedar, Batteries, their
   files, modules or declarations, or the salt, and must not contain or fetch output built from
   them. General-purpose speedups only: anything that would also speed up Mathlib.
-- **No network, no state between builds.** Each build starts from a clean copy, in a container with
-  no network that can write only its own folder. Reading or writing anything outside it, or keeping
-  state between rounds, is against the rules even where the sandbox would not stop it.
+- **No network, no state between builds.** Each workload build starts from a clean copy, in a
+  container with no network that can write only its own folder. Reading or writing anything outside
+  it, or keeping state between rounds, is against the rules even where the sandbox would not stop
+  it. Building the toolchain has the network only because Lean's build fetches its pinned
+  dependencies (CaDiCaL, mimalloc, leantar); fetching anything else there is against the rules.
 - **Deterministic output.** Two builds of the same sources must export the same bytes, as stock
   Lean's do. Parallelism is welcome as long as the result does not depend on timing.
 - **Limits.** Your toolchain must build within 150 minutes, and the workload within 60, on the CI
   runner.
 - **Review.** CI shows every entry's diff against v4.36.0. An entry that changes binary files,
-  `stage0` (the bootstrap compiler), more than 20,000 lines or more than 5,000 in one file, or whose
-  added lines mention the workload, waits for a maintainer, who merges it once the diff has been
-  read. Maintainers remove entries that break these rules, whatever the judge said.
+  `stage0` (the bootstrap compiler), more than 20,000 lines or more than 5,000 in one file, adds a
+  download to the build files, or whose added lines mention the workload, waits for a maintainer,
+  who merges it once the diff has been read. Maintainers remove entries that break these rules,
+  whatever the judge said.
 - Ties go to the earlier entry.
 
 ## How to submit
@@ -158,8 +161,9 @@ new in every round, so no toolchain can pass by replaying stored output.
 [`scripts/verify.py`](scripts/verify.py):
 
 1. **Fetch.** Your commit and stock Lean's, and the diff between them.
-2. **Build both toolchains** from source with the same command, each in a container with no network,
-   no capabilities and a read-only root, where the build can write only its own source tree.
+2. **Build both toolchains** from source with the same command, each in a container with no
+   capabilities and a read-only root, where the build can write only its own source tree (and reach
+   the network, for Lean's pinned dependencies).
 3. **Build the exporter** with each toolchain.
 4. **Rounds.** For each round, a fresh salted copy of the workload per toolchain; `lake build +Cedar`
    in the container, timed outside it; then the export, compared byte for byte.
