@@ -1,7 +1,7 @@
 ---
 spec: problem.md/v1
 name: Fastest Lean Compiler
-tagline: Make the Lean 4 toolchain build real proofs faster. CI times your Lean against stock Lean on a verified-software workload; every theorem must stay byte-identical.
+tagline: Make the Lean 4 toolchain build proofs faster. CI times your Lean against stock Lean on a verified-software workload; every theorem must stay byte-identical.
 status: active
 domain: formal-methods
 tags: [lean4, formal-verification, compilers, build-performance, theorem-proving, verified-software]
