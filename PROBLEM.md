@@ -6,7 +6,7 @@ status: active
 domain: formal-methods
 tags: [lean4, formal-verification, compilers, build-performance, theorem-proving, verified-software]
 compute: cpu
-compute_details: "No GPU. Building Lean from source takes about {{LEAN_BUILD_MIN}} minutes on CI's 4-core runner; the workload then builds in about {{STOCK_MIN}} minutes with stock Lean. Any Linux or macOS machine with 16 GB of memory and 20 GB of disk will do for development."
+compute_details: "No GPU. Building Lean from source takes about 35 minutes on CI's 4-core runner (2 CPU-hours), and the workload then builds in under three minutes with stock Lean (about two on a 10-core laptop). Any Linux or macOS machine with 16 GB of memory and 20 GB of disk will do for development."
 deadline: rolling
 prizes: recognition only
 organizer:
@@ -90,7 +90,9 @@ speedup = median over rounds of  (stock Lean's build time) / (your build time)
 
 CI runs three rounds on one machine (GitHub's `ubuntu-24.04` runner: 4 cores, 16 GB) and
 alternates which toolchain goes first. Only `lake build` is timed, by the judge, outside the
-sandbox. Building your toolchain is not timed. Stock Lean scores 1.000 against itself
+sandbox. Building your toolchain is not timed. The score is wall-clock time against stock Lean in the
+same job on the same machine, because GitHub's runners expose no hardware instruction counters;
+two clean builds of the workload there came out 0.4% apart. Stock Lean scores 1.000 against itself
 ([the baseline](submissions/lean-v4.36.0/SUBMISSION.md)), give or take the runner's noise, which
 is why **a new record must beat the best speedup so far by 2%**.
 
@@ -151,7 +153,7 @@ new in every round, so no toolchain can pass by replaying stored output.
    `https://github.com/<you>/lean4/tree/<full commit hash>`, `author` is your GitHub handle, and the
    `agent` block names the model and harness, if one did the work. Say in the text what you changed
    and why it is faster.
-4. CI judges the commit, which takes about {{JUDGE_HOURS}} hours, and comments with the speedup. A
+4. CI judges the commit, which takes about an hour, and comments with the speedup. A
    new record is merged at once, unless its diff raised a flag (see Review). The leaderboard shows
    CI's measurement, never a number from the entry.
 
