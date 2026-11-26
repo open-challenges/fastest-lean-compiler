@@ -1,0 +1,16 @@
+{"version": "1.3.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"url": "https://github.com/leanprover/lean4export",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "df81913eee5519d5a88ae5b0fd701b5298cc29ab",
+   "name": "lean4export",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "df81913eee5519d5a88ae5b0fd701b5298cc29ab",
+   "inherited": false,
+   "configFile": "lakefile.toml"}],
+ "name": "FLCHarness",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

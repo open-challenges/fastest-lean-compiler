@@ -1,0 +1,164 @@
+name: Judge an entry
+
+# Judges an entry: builds its Lean toolchain and stock Lean's from source, times both building the
+# workload in salted, alternating rounds, and checks that they export the same theorems byte for byte
+# (scripts/verify.py). Then it comments on the pull request and merges a new record.
+#
+# A pull request that adds submissions/<you>/SUBMISSION.md runs this workflow as it is on main
+# (pull_request_target), so a pull request cannot change how it is judged, and nothing from the pull
+# request is checked out or run: SUBMISSION.md is read through the API as data. The entry's code is
+# the commit its `code` field pins. It is built, and it builds the workload, in a container with no
+# network, no capabilities and a read-only root, where it can write only its own folders. Times are
+# taken outside the container. The verify job's token can only read. The publish job, which comments,
+# labels, records the verdict and merges, runs no entry code.
+#
+# Weekly, and by hand (Actions → Judge an entry → Run workflow), it judges stock Lean against itself:
+# the baseline, the runner's noise, and a check that the pins still build.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths: ["submissions/**"]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      code:
+        description: https://github.com/OWNER/REPO/tree/<40-hex commit>, or stock
+        default: stock
+      rounds:
+        description: timed rounds
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyyaml==6.0.2
+
+      - name: Read the entry from the pull request
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          python3 scripts/pr_entry.py "$PR" | tee "$RUNNER_TEMP/entry.json"
+          # the code URL is checked against a strict pattern in scripts/entries.py before it gets here
+          python3 -c 'import json, sys; e = json.load(open(sys.argv[1])); e["ok"] and print("CODE=" + e["code"])' "$RUNNER_TEMP/entry.json" >> "$GITHUB_ENV"
+
+      - name: Take the entry from the dispatch (stock Lean, on schedule)
+        if: github.event_name != 'pull_request_target'
+        env:
+          CODE: ${{ inputs.code || 'stock' }}
+        run: python3 -c 'import os, sys; sys.path.insert(0, "scripts"); import entries; c = os.environ["CODE"].strip(); assert c == "stock" or entries.CODE_URL.match(c), c; print("CODE=" + c)' >> "$GITHUB_ENV"
+
+      - name: Free disk space
+        if: env.CODE != ''
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Stock Lean from the cache
+        id: stock
+        if: env.CODE != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/stock
+          key: stock-lean-${{ hashFiles('bench/workload.json', 'harness/sandbox.Dockerfile') }}
+
+      - name: Judge
+        if: env.CODE != ''
+        env:
+          FLC_ROUNDS: ${{ inputs.rounds || '3' }}
+        run: python3 scripts/verify.py --code "$CODE" --sandbox docker --stock-dir "$RUNNER_TEMP/stock" --work "$RUNNER_TEMP/work" || true
+
+      # only trusted runs fill the cache: stock Lean is built from the pinned tag, before any entry runs
+      - name: Keep stock Lean for the next run
+        if: env.CODE != '' && github.event_name != 'pull_request_target' && steps.stock.outputs.cache-hit != 'true' && hashFiles(format('{0}/stock/build/release/stage1/bin/lean', runner.temp)) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/stock
+          key: stock-lean-${{ hashFiles('bench/workload.json', 'harness/sandbox.Dockerfile') }}
+
+      - name: Verdict
+        if: always()
+        run: |
+          mkdir -p out
+          cp "$RUNNER_TEMP/entry.json" out/ 2>/dev/null || true
+          cp "$RUNNER_TEMP/work/verdict.json" out/ 2>/dev/null || true
+          entry=(); [ -f out/entry.json ] && entry=(--entry out/entry.json)
+          python3 scripts/report.py --verdict out/verdict.json "${entry[@]}" --out out \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verdict
+          path: out/
+          retention-days: 90
+
+  publish:
+    needs: verify
+    if: ${{ !cancelled() && github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verdict
+          path: out
+
+      # the measured speedup goes on main next to the entry, from CI's verdict, never from the entry
+      - name: Record the verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [ -f out/verdict.json ] && [ "$(jq -r '.ok' out/verdict.json)" = true ] || exit 0
+          folder=$(jq -r '.folder' out/entry.json)
+          path="submissions/$folder/verdict.json"
+          sha=$(gh api "repos/$GH_REPO/contents/$path" --jq .sha 2>/dev/null || true)
+          args=(-f message="Verdict for submissions/$folder: $(jq -r '.speedup' out/verdict.json)x" -f content="$(base64 -w0 out/verdict.json)")
+          [ -n "$sha" ] && args+=(-f sha="$sha")
+          gh api -X PUT "repos/$GH_REPO/contents/$path" "${args[@]}" > /dev/null
+
+      - name: Comment, label, and merge a new record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr comment "$PR" --body-file out/comment.md
+          for label in $(jq -r '.labels[]' out/decision.json); do
+            gh label create "$label" 2>/dev/null || true
+            gh pr edit "$PR" --add-label "$label"
+          done
+          if [ "$(jq -r '.merge' out/decision.json)" = true ]; then
+            # only the commit that was judged: a push after it starts a new run instead
+            gh pr merge "$PR" --squash --match-head-commit "$HEAD_SHA"
+          fi
+          gh workflow run leaderboard.yml

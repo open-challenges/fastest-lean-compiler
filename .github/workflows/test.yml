@@ -1,0 +1,51 @@
+name: tests
+
+# The judge's own tests: the scripts (salting, entries, the merge decision, diff flags), and the
+# exporter on a toy project with the released Lean v4.36.0, salted and unsalted.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["submissions/**", "README.md"]
+  pull_request:
+    paths-ignore: ["submissions/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml==6.0.2
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - run: python3 scripts/leaderboard.py --check
+
+  exporter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lean v4.36.0
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain leanprover/lean4:v4.36.0 > /dev/null && rm elan-init.sh
+          echo "$HOME/.elan/toolchains/leanprover--lean4---v4.36.0/bin" >> "$GITHUB_PATH"
+      - name: Build the exporter
+        run: |
+          rev=$(jq -r '.packages[] | select(.name == "lean4export") | .rev' harness/lake-manifest.json)
+          mkdir -p harness/.lake/packages/lean4export && cd harness/.lake/packages/lean4export
+          git init -q && git remote add origin https://github.com/leanprover/lean4export
+          git fetch -q --depth 1 origin "$rev" && git -c advice.detachedHead=false checkout -q FETCH_HEAD
+          cd ../../.. && lake build export-theorems
+      - name: Export the toy project twice, then salted
+        run: python3 harness/tests/run_toy.py harness/.lake/build/bin/export-theorems

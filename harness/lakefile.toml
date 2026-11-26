@@ -1,0 +1,14 @@
+# The judge's exporter. scripts/verify.py builds a copy of this package with every toolchain it
+# times, stock and entry alike, in the sandbox, with lean4export already in .lake/packages.
+name = "FLCHarness"
+defaultTargets = ["export-theorems"]
+
+[[require]]
+name = "lean4export"
+git = "https://github.com/leanprover/lean4export"
+rev = "df81913eee5519d5a88ae5b0fd701b5298cc29ab"
+
+[[lean_exe]]
+name = "export-theorems"
+root = "ExportTheorems"
+supportInterpreter = true

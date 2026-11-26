@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "lean": {
+    "repo": "leanprover/lean4",
+    "tag": "v4.36.0",
+    "commit": "611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9",
+    "build": "cmake --preset release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ && make -C build/release -j$(nproc)"
+  },
+  "projects": [
+    {
+      "name": "cedar",
+      "title": "Cedar (cedar-policy/cedar-spec, cedar-lean)",
+      "repo": "cedar-policy/cedar-spec",
+      "commit": "0e8c45ca4e920ebe78b6bc705263a0b56467bb66",
+      "dir": "cedar-lean",
+      "packages": [
+        {
+          "name": "batteries",
+          "repo": "leanprover-community/batteries",
+          "commit": "b4b25a3886a16daacaf6615c2eea7170a6e8f458"
+        }
+      ],
+      "targets": [
+        "+Cedar"
+      ],
+      "export_roots": [
+        "Cedar"
+      ],
+      "prefixes": [
+        "Cedar",
+        "Batteries"
+      ]
+    }
+  ]
+}
