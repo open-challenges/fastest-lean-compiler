@@ -6,7 +6,7 @@ status: active
 domain: formal-methods
 tags: [lean4, formal-verification, compilers, build-performance, theorem-proving, verified-software]
 compute: cpu
-compute_details: "No GPU. Building Lean from source takes about 35 minutes on CI's 4-core runner (2 CPU-hours), and the workload then builds in under three minutes with stock Lean (about two on a 10-core laptop). Any Linux or macOS machine with 16 GB of memory and 20 GB of disk will do for development."
+compute_details: "No GPU. Building Lean from source takes 35 to 55 minutes on CI's 4-core runner (about 2 CPU-hours), and the workload then builds in 3 to 5 minutes with stock Lean (about two on a 10-core laptop). Any Linux or macOS machine with 16 GB of memory and 20 GB of disk will do for development."
 deadline: rolling
 prizes: recognition only
 organizer:
