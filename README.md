@@ -28,6 +28,7 @@ until now.
 <!-- leaderboard:start -->
 | # | Speedup | Build (stock → entry) | Entry | By | Agent | Date |
 |---:|---:|---:|---|---|---|---|
+| — | 1.000× (self-check 1.006×) | 5.0 → 5.0 min | [Stock Lean v4.36.0](submissions/lean-v4.36.0/SUBMISSION.md) (baseline) · [code](https://github.com/leanprover/lean4/tree/611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9) | [@leanprover](https://github.com/leanprover) | — | 2026-11-16 |
 <!-- leaderboard:end -->
 
 ## Enter

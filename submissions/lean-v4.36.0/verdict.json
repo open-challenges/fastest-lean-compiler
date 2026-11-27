@@ -1,0 +1,107 @@
+{
+  "code": "stock",
+  "base": "v4.36.0 (611c117)",
+  "workload": "Cedar (cedar-policy/cedar-spec, cedar-lean)",
+  "machine": {
+    "cpus": 4
+  },
+  "started": "2026-11-26T22:29:28Z",
+  "commit": "611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9",
+  "toolchain_build_minutes": {
+    "stock": 52.7
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "seed": "9f8b92a28833c26a",
+      "first": "stock",
+      "same_theorems": true,
+      "stock": {
+        "salted_files": 650,
+        "seconds": 298.1,
+        "export_bytes": 434150981,
+        "sha256": "1516d1c0e39302026bc302afb1ab3fe4b79a84783056818661db62c70ae52bcf",
+        "theorems": 21070
+      },
+      "entry": {
+        "salted_files": 650,
+        "seconds": 298.6,
+        "export_bytes": 434150981,
+        "sha256": "1516d1c0e39302026bc302afb1ab3fe4b79a84783056818661db62c70ae52bcf",
+        "theorems": 21070
+      },
+      "speedup": 0.9983
+    },
+    {
+      "round": 2,
+      "seed": "aa43542780e5289c",
+      "first": "entry",
+      "same_theorems": true,
+      "stock": {
+        "salted_files": 650,
+        "seconds": 306.1,
+        "export_bytes": 434151829,
+        "sha256": "a1d7266a7240ffd633f899b983b61f895e58f3b130f5d86a45bfc25b5fb67f00",
+        "theorems": 21070
+      },
+      "entry": {
+        "salted_files": 650,
+        "seconds": 298.9,
+        "export_bytes": 434151829,
+        "sha256": "a1d7266a7240ffd633f899b983b61f895e58f3b130f5d86a45bfc25b5fb67f00",
+        "theorems": 21070
+      },
+      "speedup": 1.0241
+    },
+    {
+      "round": 3,
+      "seed": "e63089aecf9aab7a",
+      "first": "stock",
+      "same_theorems": true,
+      "stock": {
+        "salted_files": 650,
+        "seconds": 301.4,
+        "export_bytes": 434151641,
+        "sha256": "0e82c31b8ff4a077400ba112e033e0d5673392254a81d39fe4969115f0169281",
+        "theorems": 21070
+      },
+      "entry": {
+        "salted_files": 650,
+        "seconds": 300.2,
+        "export_bytes": 434151641,
+        "sha256": "0e82c31b8ff4a077400ba112e033e0d5673392254a81d39fe4969115f0169281",
+        "theorems": 21070
+      },
+      "speedup": 1.004
+    },
+    {
+      "round": 4,
+      "seed": "a86d283f99b328f8",
+      "first": "entry",
+      "same_theorems": true,
+      "stock": {
+        "salted_files": 650,
+        "seconds": 298.3,
+        "export_bytes": 434151515,
+        "sha256": "b460a2693d5b1a6585cb013d51dc90191528d5855540e4562067d49aa74dad08",
+        "theorems": 21070
+      },
+      "entry": {
+        "salted_files": 650,
+        "seconds": 298.4,
+        "export_bytes": 434151515,
+        "sha256": "b460a2693d5b1a6585cb013d51dc90191528d5855540e4562067d49aa74dad08",
+        "theorems": 21070
+      },
+      "speedup": 0.9997
+    }
+  ],
+  "stage": "done",
+  "speedup": 1.006,
+  "stock_seconds": 299.9,
+  "entry_seconds": 298.8,
+  "theorems": 21070,
+  "export_bytes": 434150981,
+  "ok": true,
+  "finished": "2026-11-27T00:12:28Z"
+}

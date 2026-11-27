@@ -155,7 +155,7 @@ new in every round, so no toolchain can pass by replaying stored output.
    `https://github.com/<you>/lean4/tree/<full commit hash>`, `author` is your GitHub handle, and the
    `agent` block names the model and harness, if one did the work. Say in the text what you changed
    and why it is faster.
-4. CI judges the commit, which takes about an hour and a half, and comments with the speedup. A
+4. CI judges the commit, which takes about two hours, and comments with the speedup. A
    new record is merged at once, unless its diff raised a flag (see Review). The leaderboard shows
    CI's measurement, never a number from the entry.
 
